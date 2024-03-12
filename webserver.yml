@@ -1,0 +1,87 @@
+---
+- name: setup webserver vhost
+  hosts: all
+  become: yes
+  
+  vars:
+    app_user: "www-data"
+    http_host: "example.com"
+    http_conf: "example.com.conf"
+    http_port: "80"
+    disable_default: true
+    
+  tasks:
+    - name: apache installed
+      ansible.builtin.apt:
+        name: apache2
+        update_cache: true
+        state: latest
+
+    - name: document root exist
+      ansible.builtin.file:
+        path: "/var/www/{{ http_host }}"
+        state: directory
+        owner: "{{ app_user }}"
+        mode: '0755'
+
+    - name: custom index.html
+      ansible.builtin.copy:
+        dest: "/var/www/{{ http_host }}/index.html"
+        content: |
+                    Welcome to Example.com
+
+    - name: set up Apache virtualhost
+      ansible.builtin.template:
+        src: "templates/apache.conf.j2"
+        dest: "/etc/apache2/sites-available/{{ http_conf }}"
+
+    - name: enable new site
+      ansible.builtin.command: "/usr/sbin/a2ensite {{ http_conf }}"
+      notify: reload Apache
+
+    - name: disable default Apache site
+      ansible.builtin.command: "/usr/sbin/a2dissite 000-default.conf"
+      when: disable_default
+      notify: reload Apache
+    
+    - name: Install UFW firewall
+      apt: name=ufw update_cache=yes state=latest  
+  
+    - name: Enable UFW
+      community.general.ufw:
+        state: enabled
+
+    - name: Allow OpenSSH
+      community.general.ufw:
+        rule: allow
+        name: OpenSSH
+    
+
+    - name: open firewall http
+      community.general.ufw:
+        rule: allow
+        port: "{{ http_port }}"
+        proto: tcp
+
+    - name: open firewall for 443
+      community.general.ufw:
+        rule: allow
+        port: 443
+        proto: tcp
+
+    - name: open firewall for 8080
+      community.general.ufw:
+        rule: allow
+        port: 8080
+        proto: tcp
+    
+    - name: open firewall for 9100
+      community.general.ufw:
+        rule: allow
+        port: 9100
+        proto: tcp
+  handlers:
+    - name: reload Apache
+      ansible.builtin.service:
+        name: apache2
+        state: reloaded
